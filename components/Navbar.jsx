@@ -2,9 +2,34 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState, useEffect } from "react";
+import { createClient } from "@/utils/supabase/client";
+import UserProfileDropdown from "./UserProfileDropdown";
 
 export default function Navbar() {
   const pathname = usePathname();
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const supabase = createClient();
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+      setLoading(false);
+    };
+
+    checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
 
   const getLinkClasses = (path) => {
     const baseClasses = "font-label-md text-label-md pb-1 transition-all duration-300 ease-out";
@@ -37,13 +62,28 @@ export default function Navbar() {
             Assistant
           </Link>
         </nav>
+        
         <div className="flex items-center gap-unit-md">
-          <button className="hidden md:block font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors px-4 py-2">Sign In</button>
-          <Link href="/dashboard" className="bg-primary text-on-primary px-6 py-3 rounded-xl font-label-md text-label-md hover:bg-primary-container shadow-md transition-all duration-300 hover:scale-[1.02]">
-            Get Started
-          </Link>
+          {!loading && (
+            user ? (
+              <UserProfileDropdown user={user} supabase={supabase} />
+            ) : (
+              <>
+                <Link href="/login" className="hidden md:block font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors px-4 py-2">
+                  Sign In
+                </Link>
+                <Link href="/login?mode=signup" className="bg-primary text-on-primary px-6 py-3 rounded-xl font-label-md text-label-md hover:bg-primary-container shadow-md transition-all duration-300 hover:scale-[1.02]">
+                  Get Started
+                </Link>
+              </>
+            )
+          )}
+          {loading && (
+            <div className="w-9 h-9 rounded-full bg-surface-container animate-pulse border border-outline-variant"></div>
+          )}
         </div>
       </div>
     </header>
   );
 }
+
