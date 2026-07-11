@@ -2,90 +2,48 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Landmark, Menu, X } from "lucide-react";
-import { useState } from "react";
 
 export default function Navbar() {
   const pathname = usePathname();
-  const [isOpen, setIsOpen] = useState(false);
 
-  const navLinks = [
-    { href: "/", label: "Home" },
-    { href: "/dashboard", label: "Dashboard" },
-    { href: "/features", label: "Features" },
-    { href: "/assistant", label: "Assistant" },
-  ];
+  const getLinkClasses = (path) => {
+    const baseClasses = "font-label-md text-label-md pb-1 transition-all duration-300 ease-out";
+    if (pathname === path) {
+      return `${baseClasses} text-primary border-b-2 border-primary active:scale-[1.01]`;
+    }
+    return `${baseClasses} text-on-surface-variant hover:text-primary`;
+  };
 
   return (
-    <nav className="bg-slate-900 border-b border-slate-800 text-slate-100 sticky top-0 z-50 shadow-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo and Brand */}
-          <div className="flex items-center">
-            <Link href="/" className="flex items-center space-x-2 text-indigo-400 hover:text-indigo-300 transition-colors">
-              <Landmark className="h-7 w-7 text-amber-500" />
-              <span className="font-extrabold text-xl tracking-wider text-white">NAGRIK</span>
-            </Link>
-          </div>
-
-          {/* Desktop Nav Links */}
-          <div className="hidden md:block">
-            <div className="ml-10 flex items-baseline space-x-6">
-              {navLinks.map((link) => {
-                const isActive = pathname === link.href;
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={`px-3 py-2 rounded-md text-sm font-semibold transition-all duration-200 ${
-                      isActive
-                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
-                        : "text-slate-300 hover:bg-slate-800 hover:text-white"
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Mobile menu button */}
-          <div className="md:hidden">
-            <button
-              onClick={() => setIsOpen(!isOpen)}
-              className="inline-flex items-center justify-center p-2 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 focus:outline-none transition-colors"
-              aria-expanded="false"
-            >
-              <span className="sr-only">Open main menu</span>
-              {isOpen ? <X className="block h-6 w-6" /> : <Menu className="block h-6 w-6" />}
-            </button>
-          </div>
+    <header className="bg-surface-container-lowest/80 backdrop-blur-md border-b border-outline-variant sticky top-0 z-50 transition-all duration-300">
+      <div className="flex justify-between items-center w-full px-margin-desktop py-unit-md max-w-container-max mx-auto">
+        <Link href="/" className="flex items-center gap-2">
+          <span className="font-display text-headline-md font-extrabold tracking-tight text-on-surface">Nagrik Mitra</span>
+        </Link>
+        <nav className="hidden md:flex items-center gap-8">
+          <Link href="/" className={getLinkClasses("/")}>
+            Home
+          </Link>
+          <Link href="/dashboard" className={getLinkClasses("/dashboard")}>
+            Dashboard
+          </Link>
+          <Link href="/features" className={getLinkClasses("/features")}>
+            Features
+          </Link>
+          <Link href="/news" className={getLinkClasses("/news")}>
+            News
+          </Link>
+          <Link href="/assistant" className={getLinkClasses("/assistant")}>
+            Assistant
+          </Link>
+        </nav>
+        <div className="flex items-center gap-unit-md">
+          <button className="hidden md:block font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors px-4 py-2">Sign In</button>
+          <Link href="/dashboard" className="bg-primary text-on-primary px-6 py-3 rounded-xl font-label-md text-label-md hover:bg-primary-container shadow-md transition-all duration-300 hover:scale-[1.02]">
+            Get Started
+          </Link>
         </div>
       </div>
-
-      {/* Mobile Menu */}
-      {isOpen && (
-        <div className="md:hidden bg-slate-900 border-b border-slate-800 px-2 pt-2 pb-3 space-y-1 sm:px-3">
-          {navLinks.map((link) => {
-            const isActive = pathname === link.href;
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setIsOpen(false)}
-                className={`block px-3 py-2 rounded-md text-base font-medium ${
-                  isActive
-                    ? "bg-indigo-600 text-white"
-                    : "text-slate-300 hover:bg-slate-800 hover:text-white"
-                }`}
-              >
-                {link.label}
-              </Link>
-            );
-          })}
-        </div>
-      )}
-    </nav>
+    </header>
   );
 }

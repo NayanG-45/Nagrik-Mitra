@@ -43,21 +43,18 @@ export default function FeaturesPage() {
   ];
 
   return (
-    <div className="bg-slate-950 text-slate-100 min-h-screen py-16 relative">
-      {/* Decorative gradient light */}
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/5 blur-[120px] rounded-full pointer-events-none" />
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12 relative">
+    <div className="bg-slate-50 text-slate-900 min-h-screen py-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
         {/* Page Header */}
         <div className="text-center max-w-3xl mx-auto space-y-4">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-950 text-indigo-400 text-xs font-bold border border-indigo-900 shadow-sm">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-100 shadow-sm">
             <Sparkles className="h-3.5 w-3.5" />
             <span>Platform Roadmap</span>
           </div>
-          <h1 className="text-4xl font-extrabold tracking-tight text-white md:text-5xl">
+          <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 md:text-5xl">
             Explore Nagrik Modules
           </h1>
-          <p className="text-slate-400 leading-relaxed text-sm md:text-base">
+          <p className="text-slate-600 leading-relaxed text-sm md:text-lg">
             From direct conversational filing to AI eligibility matching and multilingual voice accessibility, discover how Nagrik is bringing the state apparatus closer to the common citizen.
           </p>
         </div>
@@ -77,17 +74,17 @@ export default function FeaturesPage() {
         </div>
 
         {/* Tech Stack Info Banner */}
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-md max-w-5xl mx-auto">
-          <div className="space-y-1 text-center md:text-left">
-            <h4 className="font-bold text-white text-base">Integrations & Architecture Roadmap</h4>
-            <p className="text-xs text-slate-400 leading-relaxed">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm max-w-5xl mx-auto">
+          <div className="space-y-2 text-center md:text-left">
+            <h4 className="font-bold text-slate-900 text-base">Integrations & Architecture Roadmap</h4>
+            <p className="text-sm text-slate-600 leading-relaxed">
               We are utilizing React & Next.js for our core UI. In the next iterations, we will plug in Supabase (Auth, Database, Storage), Sarvam AI APIs (Translation, Chat, Voice STT/TTS), and the GNews feed API.
             </p>
           </div>
-          <div className="flex-shrink-0 flex gap-3 text-[10px] font-bold tracking-wider uppercase">
-            <span className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-300">Next.js</span>
-            <span className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-300">Supabase</span>
-            <span className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-300">Sarvam AI</span>
+          <div className="flex-shrink-0 flex gap-3 text-xs font-semibold tracking-wider uppercase">
+            <span className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-600">Next.js</span>
+            <span className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-600">Supabase</span>
+            <span className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-600">Sarvam AI</span>
           </div>
         </div>
       </div>
