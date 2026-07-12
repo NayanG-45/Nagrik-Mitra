@@ -1,27 +1,52 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import QuickActionCard from "@/components/QuickActionCard";
+import { createClient } from "@/utils/supabase/client";
+import { Copy, Check, ChevronDown, ChevronUp, FileText, Calendar, Clock } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export default function Dashboard() {
-  const recentActivity = [
-    {
-      title: "Digital Certificate Issued",
-      time: "2 hours ago",
-      type: "success",
-      description: "Residential status certificate available for download.",
-    },
-    {
-      title: "Complaint NAG-2026-001 submitted",
-      time: "1 day ago",
-      type: "info",
-      description: "Grievance successfully filed and queued for review.",
-    },
-    {
-      title: "You may be eligible for a scholarship",
-      time: "3 days ago",
-      type: "alert",
-      description: "Matched with 'National Merit Scholarship' criteria.",
-    },
-  ];
+  const router = useRouter();
+  const [user, setUser] = useState(null);
+  const [grievances, setGrievances] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState(null);
+  const [copiedId, setCopiedId] = useState(null);
+
+  useEffect(() => {
+    const loadData = async () => {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push("/login");
+        return;
+      }
+      setUser(session.user);
+
+      const { data } = await supabase
+        .from("grievances")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false });
+      
+      if (data) {
+        setGrievances(data);
+      }
+      setLoading(false);
+    };
+    loadData();
+  }, [router]);
+
+  const copyToClipboard = (text, id) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const toggleExpand = (id) => {
+    setExpandedId(expandedId === id ? null : id);
+  };
 
   return (
     <div className="bg-background text-on-surface min-h-screen py-unit-lg">
@@ -104,26 +129,115 @@ export default function Dashboard() {
               </Link>
             </div>
 
-            {/* Timeline */}
+            {/* Dynamic Grievances Tracker */}
             <div className="bg-surface-container-lowest p-unit-lg rounded-xl signature-shadow border border-outline-variant">
               <div className="flex justify-between items-center border-b border-outline-variant pb-4 mb-6">
-                <h2 className="font-headline-md text-on-surface">Timeline of Requests</h2>
-                <Link href="#" className="font-label-sm text-primary hover:underline">View All History</Link>
+                <h2 className="font-headline-md text-on-surface">Your Registered Grievances</h2>
+                <span className="font-label-sm text-on-surface-variant">Click row to view full draft</span>
               </div>
-              <div className="space-y-6">
-                {recentActivity.map((activity, idx) => (
-                  <div key={idx} className="flex gap-4 items-start">
-                    <div className="w-3 h-3 rounded-full bg-primary mt-1.5 flex-shrink-0"></div>
-                    <div className="flex-1">
-                      <div className="flex justify-between items-start">
-                        <h4 className="font-label-md text-on-surface">{activity.title}</h4>
-                        <span className="font-label-sm text-on-surface-variant whitespace-nowrap">{activity.time}</span>
+              
+              {loading ? (
+                <div className="space-y-3 py-4">
+                  <div className="h-10 bg-slate-100 animate-pulse rounded-lg"></div>
+                  <div className="h-10 bg-slate-100 animate-pulse rounded-lg"></div>
+                </div>
+              ) : grievances.length === 0 ? (
+                <div className="text-center py-8 space-y-2">
+                  <p className="font-body-md text-on-surface-variant">No grievances registered yet.</p>
+                  <Link href="/grievance" className="inline-block font-label-sm text-primary hover:underline">
+                    File a new grievance now &rarr;
+                  </Link>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-150">
+                  {grievances.map((g) => {
+                    const isExpanded = expandedId === g.id;
+                    const dateFormatted = g.created_at
+                      ? new Date(g.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+                      : "Recently Added";
+
+                    return (
+                      <div key={g.id} className="py-4 first:pt-0 last:pb-0">
+                        <div
+                          onClick={() => toggleExpand(g.id)}
+                          className="flex items-center justify-between cursor-pointer hover:bg-slate-50/50 p-2 rounded-lg transition-colors"
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-label-md text-on-surface font-semibold">{g.title}</h4>
+                              <span className={`px-2 py-0.5 text-[9px] rounded-full font-bold uppercase tracking-wider border ${g.urgency === "high" ? "bg-rose-50 text-rose-700 border-rose-100" : g.urgency === "medium" ? "bg-amber-50 text-amber-700 border-amber-100" : "bg-emerald-50 text-emerald-700 border-emerald-100"}`}>
+                                {g.urgency}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                              <span>{g.category}</span>
+                              <span>•</span>
+                              <span>{dateFormatted}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-label-sm px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-100 rounded-full uppercase tracking-wider text-[10px] flex items-center gap-1 font-bold">
+                              <Clock className="h-3 w-3" />
+                              {g.status || "Pending"}
+                            </span>
+                            {isExpanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4 animate-in slide-in-from-top-2 duration-200">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Official Drafted Letter</span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      copyToClipboard(g.drafted_complaint, g.id);
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-200 text-slate-700 rounded-lg text-[10px] font-bold hover:bg-slate-50 transition-colors shadow-sm"
+                                  >
+                                    {copiedId === g.id ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                                    <span>{copiedId === g.id ? "Copied!" : "Copy"}</span>
+                                  </button>
+                                </div>
+                                <div className="bg-slate-900 text-slate-200 font-mono text-[11px] rounded-lg p-3 border border-slate-800 shadow-inner whitespace-pre-wrap leading-relaxed max-h-[200px] overflow-y-auto">
+                                  {g.drafted_complaint}
+                                </div>
+                              </div>
+
+                              <div className="space-y-3">
+                                <div>
+                                  <span className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">Native Summary Explanation</span>
+                                  <p className="bg-emerald-50 text-emerald-950 border border-emerald-100 rounded-lg p-3 text-[11px] leading-relaxed mt-1">
+                                    {g.native_explanation}
+                                  </p>
+                                </div>
+
+                                {g.submission_steps && g.submission_steps.length > 0 && (
+                                  <div>
+                                    <span className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">How to Submit</span>
+                                    <div className="space-y-1.5 mt-1">
+                                      {g.submission_steps.map((step, idx) => (
+                                        <div key={idx} className="flex gap-2 bg-white border border-slate-200 rounded-lg p-2 text-[10px] leading-relaxed shadow-sm">
+                                          <div className="w-4 h-4 bg-primary/10 text-primary rounded-full flex items-center justify-center font-bold flex-shrink-0 text-[9px]">
+                                            {idx + 1}
+                                          </div>
+                                          <p className="text-slate-650">{step}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <p className="font-body-sm text-on-surface-variant mt-1">{activity.description}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
