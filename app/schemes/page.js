@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { Bot, X, CheckCircle2, AlertCircle, AlertTriangle, Filter, ShieldCheck, ChevronRight, ArrowLeft, FileText, User } from 'lucide-react';
+import { Bot, X, CheckCircle2, AlertCircle, AlertTriangle, Filter, ShieldCheck, ChevronRight, ArrowLeft, FileText, User, Mic, MicOff, Send } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/utils/supabase/client';
 
@@ -21,9 +21,66 @@ export default function SchemesNavigator() {
   // Companion State
   const [isCompanionOpen, setIsCompanionOpen] = useState(false);
   const [chatHistory, setChatHistory] = useState([
-    { role: 'system', text: "Hello, citizen! I can assist you with compiling documents or checking your eligibility metrics. Choose an inquiry option below:" }
+    { role: 'system', text: "Hello, citizen! I am your Sarvam Multilingual Assistant. I can assist you with compiling documents or checking your eligibility metrics. Ask me anything in your local language:" }
   ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [isChatLoading, setIsChatLoading] = useState(false);
   const chatEndRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+
+  const toggleRecording = async () => {
+    if (isRecording) {
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.stop();
+      }
+      setIsRecording(false);
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorderRef.current = new MediaRecorder(stream);
+        audioChunksRef.current = [];
+
+        mediaRecorderRef.current.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorderRef.current.onstop = async () => {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          const formData = new FormData();
+          formData.append('file', audioBlob, 'recording.webm');
+          
+          setIsChatLoading(true);
+          try {
+            const res = await fetch('/api/complaints/voice', {
+              method: 'POST',
+              body: formData,
+            });
+            const data = await res.json();
+            if (data.success && data.transcript) {
+              setChatInput(prev => prev ? prev + ' ' + data.transcript : data.transcript);
+            } else if (data.mock) {
+              setChatInput(prev => prev ? prev + ' ' + data.transcript : data.transcript);
+            }
+          } catch (error) {
+            console.error("Audio processing failed", error);
+          } finally {
+            setIsChatLoading(false);
+            stream.getTracks().forEach(track => track.stop());
+          }
+        };
+
+        mediaRecorderRef.current.start();
+        setIsRecording(true);
+      } catch (error) {
+        console.error("Error accessing microphone", error);
+        alert("Please grant microphone permissions to use voice dictation.");
+      }
+    }
+  };
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -107,22 +164,86 @@ export default function SchemesNavigator() {
     return true;
   });
 
-  const handleCompanionShortcut = (query) => {
-    const newChat = [...chatHistory, { role: 'user', text: query }];
-    setChatHistory(newChat);
+  const handleChatSubmit = async (e) => {
+    if (e) e.preventDefault();
+    if (!chatInput.trim() || isChatLoading) return;
+
+    const query = chatInput.trim();
+    setChatInput("");
     
-    let responseText = "";
-    if (query.includes("Eligibility")) {
-      responseText = "Based on your current profile metrics, I have cross-referenced state databases. You are currently eligible for 2 direct benefit transfers. Ensure your income certificate is linked in the vault!";
-    } else if (query.includes("Track")) {
-      responseText = "Your application for the Post-Matric Scholarship is currently in 'Institution Verification' stage. Expected clearance by District Welfare Officer: 5 days.";
+    setChatHistory(prev => [...prev, { role: 'user', text: query }]);
+    setIsChatLoading(true);
+
+    let contextData = null;
+    const activeScheme = schemes.find(s => s.id === selectedSchemeId);
+    let queryToSend = query;
+    
+    if (selectedSchemeId && activeScheme) {
+      contextData = {
+        title: activeScheme.title,
+        category: activeScheme.category,
+        criteria: activeScheme.criteria,
+        requiredDocs: activeScheme.requiredDocs,
+        procedureSteps: activeScheme.procedureSteps,
+        payAttentionPoints: activeScheme.payAttentionPoints
+      };
+      
+      const qLower = query.toLowerCase();
+      if (qLower.includes('condition') || qLower.includes('critical') || qLower.includes('step')) {
+        queryToSend = `CONTEXT: The citizen is currently exploring the official civic details layout for ${activeScheme.title}. The phrase 'critical condition' refers strictly to the structural rules, eligibility clauses, and administrative warnings defined in the scheme's 'payAttentionPoints' dataset array. Do NOT treat this as a medical query. Read the data blocks provided in contextData and explain the relevant rule/condition clearly in the user's input language:\n\nUser Query: ${query}`;
+      }
     } else {
-      responseText = "I can guide you through the official workflow. Please select a scheme to view required document checklists.";
+      // Step 1: Local Catalog Context Check & Explicit Mapping
+      const qLower = query.toLowerCase();
+      const matchedSchemes = schemes.filter(s => 
+        qLower.includes(s.category.toLowerCase()) || 
+        qLower.includes('scholarship') && s.category.toLowerCase() === 'scholarship' ||
+        qLower.includes('subsidy') && s.category.toLowerCase() === 'subsidy' ||
+        s.title.toLowerCase().includes(qLower)
+      );
+      
+      // If no specific keyword matches, provide the full catalog to let AI decide
+      const targetSchemes = matchedSchemes.length > 0 ? matchedSchemes : schemes;
+      
+      contextData = {
+        relevantLocalSchemes: targetSchemes.map(s => ({
+          title: s.title,
+          department: s.provider,
+          conditions: s.criteria,
+          requiredDocs: s.requiredDocs,
+          procedureSteps: s.procedureSteps
+        }))
+      };
     }
 
-    setTimeout(() => {
-      setChatHistory(prev => [...prev, { role: 'system', text: responseText }]);
-    }, 800);
+    try {
+      const res = await fetch('/api/schemes/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: queryToSend, contextData })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setChatHistory(prev => [...prev, { role: 'system', text: data.reply }]);
+      } else {
+        setChatHistory(prev => [...prev, { role: 'system', text: "Error connecting to Sarvam AI." }]);
+      }
+    } catch (err) {
+      setChatHistory(prev => [...prev, { role: 'system', text: "Network connection error." }]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
+  const parseMarkdown = (text) => {
+    let html = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    html = html
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/\n- (.*)/g, '<br/><span class="text-[#3525CD] mr-1">•</span> $1')
+      .replace(/\n\* (.*)/g, '<br/><span class="text-[#3525CD] mr-1">•</span> $1')
+      .replace(/\n/g, '<br/>');
+    return { __html: html };
   };
 
   const activeScheme = schemes.find(s => s.id === selectedSchemeId);
@@ -427,35 +548,54 @@ export default function SchemesNavigator() {
                       ? 'bg-white border border-surface-container text-on-surface rounded-tr-sm' 
                       : 'bg-[#3525CD]/10 text-[#3525CD] font-medium border border-[#3525CD]/20 rounded-tl-sm'
                   }`}>
-                    {msg.text}
+                    {msg.role === 'user' 
+                      ? msg.text 
+                      : <div dangerouslySetInnerHTML={parseMarkdown(msg.text)} />
+                    }
                   </div>
                 </div>
               ))}
               <div ref={chatEndRef} />
             </div>
 
-            {/* Mock Quick Actions (No Text Input Sandbox) */}
+            {/* Input Sandbox Area */}
             <div className="p-4 bg-white border-t border-surface-container">
-              <div className="flex flex-col gap-2">
-                <button 
-                  onClick={() => handleCompanionShortcut("Check my eligibility against active schemes.")} 
-                  className="w-full text-left px-4 py-2.5 bg-surface-container-lowest border border-outline-variant hover:border-[#3525CD]/50 rounded-xl text-sm font-semibold text-on-surface hover:bg-surface-container-low transition-colors"
-                >
-                  Check my eligibility metrics
-                </button>
-                <button 
-                  onClick={() => handleCompanionShortcut("Track my pending application documents.")} 
-                  className="w-full text-left px-4 py-2.5 bg-surface-container-lowest border border-outline-variant hover:border-[#3525CD]/50 rounded-xl text-sm font-semibold text-on-surface hover:bg-surface-container-low transition-colors"
-                >
-                  Track document workflows
-                </button>
-                <button 
-                  onClick={() => handleCompanionShortcut("How do I submit state guidelines?")} 
-                  className="w-full text-left px-4 py-2.5 bg-surface-container-lowest border border-outline-variant hover:border-[#3525CD]/50 rounded-xl text-sm font-semibold text-on-surface hover:bg-surface-container-low transition-colors"
-                >
-                  View state submission guidelines
-                </button>
+              <div className="mb-3 flex items-center gap-2 px-1">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">
+                  [Sarvam Multilingual Engine Active]
+                </span>
               </div>
+              <form onSubmit={handleChatSubmit} className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={toggleRecording}
+                  className={`p-3 rounded-xl flex items-center justify-center transition-colors shadow-sm shrink-0 ${isRecording ? 'bg-rose-50 border border-rose-200 text-rose-600 animate-pulse' : 'bg-[#f7f9fb] border border-outline-variant text-[#3525CD] hover:bg-surface-container-low'}`}
+                >
+                  {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                </button>
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder={isRecording ? "[Listening... Speak in any local language]" : "Ask anything in your language..."}
+                  disabled={isChatLoading || isRecording}
+                  className="flex-1 px-4 py-3 w-full min-w-0 rounded-xl border border-surface-container bg-[#f7f9fb] text-sm focus:outline-none focus:border-[#3525CD] transition-colors disabled:opacity-70 text-on-surface"
+                />
+                <button
+                  type="submit"
+                  disabled={!chatInput.trim() || isChatLoading || isRecording}
+                  className="p-3 bg-[#3525CD] hover:bg-[#2a1cb1] text-white rounded-xl flex items-center justify-center transition-colors shadow-sm shrink-0 disabled:opacity-50"
+                >
+                  <Send className="w-5 h-5" />
+                </button>
+              </form>
+              
+              {isChatLoading && (
+                <p className="text-[10px] text-center text-[#3525CD] font-medium mt-2 animate-pulse">
+                  Processing query via Sarvam Pipeline...
+                </p>
+              )}
             </div>
           </div>
         )}
