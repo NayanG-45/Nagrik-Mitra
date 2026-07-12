@@ -87,7 +87,7 @@ export default function Dashboard() {
                 <p className="font-label-sm text-on-surface-variant">View eligible benefits</p>
               </Link>
               
-              <Link href="/features" className="group bg-surface-container-lowest p-6 rounded-xl signature-shadow border border-outline-variant hover:border-primary transition-all duration-300 flex flex-col items-center justify-center text-center">
+              <Link href="/grievance" className="group bg-surface-container-lowest p-6 rounded-xl signature-shadow border border-outline-variant hover:border-primary transition-all duration-300 flex flex-col items-center justify-center text-center">
                 <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-4 group-hover:scale-110 transition-transform">
                   <span className="material-symbols-outlined text-[24px]">report</span>
                 </div>

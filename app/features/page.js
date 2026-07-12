@@ -20,7 +20,8 @@ export default function FeaturesPage() {
       title: "Grievance Filing",
       description: "Direct citizen-to-authority complaint management pipeline. Chat to detail your grievance, capture geolocation details, attach proofs, file officially, and track real-time resolution status.",
       icon: AlertCircle,
-      status: "Coming Soon",
+      status: "Core",
+      href: "/grievance",
     },
     {
       title: "News Feed",
