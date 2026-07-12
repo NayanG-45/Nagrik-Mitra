@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-@theme inline {
+@theme {
   --color-on-primary-fixed-variant: #3323cc;
   --color-outline-variant: #c7c4d8;
   --color-surface-container: #eceef0;

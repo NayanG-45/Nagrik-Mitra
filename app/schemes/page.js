@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Bot, X, CheckCircle2, AlertCircle, AlertTriangle, Filter, ShieldCheck, ChevronRight, ArrowLeft, FileText, User } from 'lucide-react';
 import Link from 'next/link';
+import { createClient } from '@/utils/supabase/client';
 
 export default function SchemesNavigator() {
-  const [userData, setUserData] = useState({ role: '', location: '', income: null });
+  const [userData, setUserData] = useState({ role: '', location: '', income: null, verified_documents: [] });
   const [isGuest, setIsGuest] = useState(true);
   const [schemes, setSchemes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,17 +26,38 @@ export default function SchemesNavigator() {
   const chatEndRef = useRef(null);
 
   useEffect(() => {
-    const role = localStorage.getItem('user_role');
-    const location = localStorage.getItem('user_location');
-    const incomeStr = localStorage.getItem('user_income');
-    const income = incomeStr ? parseInt(incomeStr, 10) : null;
+    const checkAuth = async () => {
+      try {
+        const supabase = createClient();
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    if (role) {
-      setUserData({ role, location, income });
-      setIsGuest(false);
-    } else {
-      setIsGuest(true);
-    }
+        if (user && !authError) {
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+
+          if (profile && !profileError) {
+            setUserData({ 
+              role: profile.role || '', 
+              location: profile.location || '', 
+              income: profile.income ? parseInt(profile.income, 10) : null,
+              verified_documents: profile.verified_documents || []
+            });
+            setIsGuest(false);
+          } else {
+            setIsGuest(true);
+          }
+        } else {
+          setIsGuest(true);
+        }
+      } catch (err) {
+        console.error("Session fetch error:", err);
+        setIsGuest(true);
+      }
+    };
+    checkAuth();
 
     const fetchSchemes = async () => {
       try {
