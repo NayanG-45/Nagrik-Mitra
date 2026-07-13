@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function UserProfileDropdown({ user, supabase }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
   const router = useRouter();
+  const pathname = usePathname();
 
   // Close dropdown if user clicks outside
   useEffect(() => {
@@ -23,19 +24,40 @@ export default function UserProfileDropdown({ user, supabase }) {
   const [isProfileIncomplete, setIsProfileIncomplete] = useState(false);
 
   useEffect(() => {
+    let channel;
     async function checkProfile() {
       if (user) {
         const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
         if (data) {
-          const incomplete = !data.location || data.location === 'India' || !data.income || data.income === 0 || data.role === 'citizen' || data.role === 'General Citizen';
+          const incomplete = !(data.income && Number(data.income) > 0 && data.location && data.location !== 'India');
           setIsProfileIncomplete(incomplete);
         } else {
           setIsProfileIncomplete(true);
         }
+
+        const uniqueChannel = `dropdown-profile-changes-${Date.now()}-${Math.random()}`;
+        channel = supabase
+          .channel(uniqueChannel)
+          .on('postgres_changes', { 
+            event: '*', 
+            schema: 'public', 
+            table: 'profiles', 
+            filter: `id=eq.${user.id}` 
+          }, (payload) => {
+             const updatedData = payload.new || payload.old;
+             if (updatedData) {
+               const incomplete = !(updatedData.income && Number(updatedData.income) > 0 && updatedData.location && updatedData.location !== 'India');
+               setIsProfileIncomplete(incomplete);
+             }
+          })
+          .subscribe();
       }
     }
     checkProfile();
-  }, [user, supabase]);
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [user, supabase, pathname]);
 
   const handleSignOut = async () => {
     setIsOpen(false);

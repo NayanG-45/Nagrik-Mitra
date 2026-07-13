@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { createClient } from '@/utils/supabase/client';
 
 export default function SchemesNavigator() {
-  const [userData, setUserData] = useState({ role: '', location: '', income: null, verified_documents: [] });
+  const [userData, setUserData] = useState({ role: '', location: '', income: null, gender: '', verified_documents: [] });
   const [isGuest, setIsGuest] = useState(true);
   const [schemes, setSchemes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +83,7 @@ export default function SchemesNavigator() {
   };
 
   useEffect(() => {
+    let channel;
     const checkAuth = async () => {
       try {
         const supabase = createClient();
@@ -96,13 +97,34 @@ export default function SchemesNavigator() {
             .single();
 
           if (profile && !profileError) {
-            setUserData({ 
-              role: profile.role || '', 
-              location: profile.location || '', 
-              income: profile.income ? parseInt(profile.income, 10) : null,
-              verified_documents: profile.verified_documents || []
-            });
-            setIsGuest(false);
+            const updateStateFromProfile = (prof) => {
+              setUserData({ 
+                role: prof.role || '', 
+                location: prof.location || '', 
+                income: prof.income !== null && prof.income !== undefined ? parseInt(prof.income, 10) : null,
+                gender: prof.gender || '',
+                verified_documents: prof.verified_documents || []
+              });
+              const isProfileComplete = !!(prof.location && prof.role && prof.dob);
+              setIsGuest(!isProfileComplete);
+            };
+            
+            updateStateFromProfile(profile);
+
+            const uniqueChannel = `schemes-profile-changes-${Date.now()}-${Math.random()}`;
+            channel = supabase
+              .channel(uniqueChannel)
+              .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'profiles', 
+                filter: `id=eq.${user.id}` 
+              }, (payload) => {
+                if (payload.new) {
+                  updateStateFromProfile(payload.new);
+                }
+              })
+              .subscribe();
           } else {
             setIsGuest(true);
           }
@@ -130,6 +152,13 @@ export default function SchemesNavigator() {
       }
     };
     fetchSchemes();
+
+    return () => {
+      if (channel) {
+        const supabase = createClient();
+        supabase.removeChannel(channel);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -143,11 +172,16 @@ export default function SchemesNavigator() {
     
     const { criteria } = scheme;
     const roleMatch = !criteria.role || criteria.role.toLowerCase() === userData.role?.toLowerCase();
-    const locMatch = !criteria.location || criteria.location.toLowerCase() === userData.location?.toLowerCase() || criteria.location === 'India';
-    const incomeMatch = criteria.incomeMax === null || (userData.income && userData.income <= criteria.incomeMax);
+    const locMatch = !criteria.location || userData.location?.toLowerCase().includes(criteria.location.toLowerCase()) || criteria.location === 'India';
+    const incomeMatch = criteria.incomeMax === null || criteria.incomeMax === undefined || (userData.income !== null && userData.income <= criteria.incomeMax);
+    const genderMatch = !criteria.gender || criteria.gender.toLowerCase() === userData.gender?.toLowerCase();
 
-    if (roleMatch && locMatch && incomeMatch) return 'Ready to Apply';
-    if (!roleMatch || !locMatch) return 'Not Eligible';
+    const docsMatch = scheme.requiredDocs.every(doc => 
+      doc === 'Basic Profile' || (userData.verified_documents && userData.verified_documents.includes(doc))
+    );
+
+    if (roleMatch && locMatch && incomeMatch && genderMatch && docsMatch) return 'Ready to Apply';
+    if (!roleMatch || !locMatch || !genderMatch || (!incomeMatch && userData.income !== null && userData.income > criteria.incomeMax)) return 'Not Eligible';
     return 'Action Required';
   };
 
@@ -379,12 +413,16 @@ export default function SchemesNavigator() {
                               {scheme.category}
                             </div>
                             <div className={`text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5 border ${
-                              isReady 
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                              status === 'Ready to Apply' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                              status === 'Not Eligible' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                              'bg-amber-50 text-amber-700 border-amber-200'
                             }`}>
-                              {isReady ? <ShieldCheck className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
-                              {isReady ? '[PROFILE VERIFIED]' : '[VERIFICATION PENDING]'}
+                              {status === 'Ready to Apply' ? <ShieldCheck className="w-3.5 h-3.5" /> : 
+                               status === 'Not Eligible' ? <X className="w-3.5 h-3.5" /> : 
+                               <AlertTriangle className="w-3.5 h-3.5" />}
+                              {status === 'Ready to Apply' ? '[ELIGIBLE & VERIFIED]' : 
+                               status === 'Not Eligible' ? '[NOT ELIGIBLE]' : 
+                               '[VERIFICATION PENDING]'}
                             </div>
                           </div>
                           <h2 className="text-xl font-bold text-on-surface mb-1 group-hover:text-[#3525CD] transition-colors">
@@ -445,7 +483,7 @@ export default function SchemesNavigator() {
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {activeScheme.requiredDocs.map((doc, i) => {
-                      const isVerified = (doc === 'Basic Profile' && !isGuest);
+                      const isVerified = (doc === 'Basic Profile' && !isGuest) || (userData.verified_documents && userData.verified_documents.includes(doc));
                       
                       return (
                         <div key={i} className="bg-white border border-surface-container rounded-xl p-4 flex items-start justify-between shadow-sm">

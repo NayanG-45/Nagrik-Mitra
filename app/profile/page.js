@@ -16,12 +16,13 @@ export default function ProfileRegistry() {
     full_name: '',
     dob: '',
     gender: 'Male',
-    role: 'General Citizen', // Core Economic Role
+    role: 'General Citizen', 
     income: '',
     location: '',
     verified_documents: []
   });
 
+  const [isProfileComplete, setIsProfileComplete] = useState(false);
   const [userSession, setUserSession] = useState(null);
 
   useEffect(() => {
@@ -44,20 +45,28 @@ export default function ProfileRegistry() {
           .single();
 
         if (profile) {
+          const complete = !!(
+            profile.location && 
+            profile.role && 
+            profile.dob
+          );
+
           setFormData({
             full_name: profile.full_name || user.user_metadata?.full_name || '',
             dob: profile.dob || '',
             gender: profile.gender || 'Male',
             role: profile.role || 'General Citizen',
-            income: profile.income ? profile.income.toString() : '',
+            income: profile.income !== null && profile.income !== undefined ? profile.income.toString() : '',
             location: profile.location || '',
             verified_documents: profile.verified_documents || []
           });
+          
+          setIsProfileComplete(complete);
         } else {
-            setFormData(prev => ({
-                ...prev,
-                full_name: user.user_metadata?.full_name || user.user_metadata?.name || ''
-            }));
+          setFormData(prev => ({
+            ...prev,
+            full_name: user.user_metadata?.full_name || user.user_metadata?.name || ''
+          }));
         }
       } catch (err) {
         console.error("Profile load error", err);
@@ -75,6 +84,11 @@ export default function ProfileRegistry() {
 
   const handleUpdate = async (e) => {
     e.preventDefault();
+    if (!formData.dob || !formData.income || !formData.location || formData.location === 'India') {
+      setToast({ type: 'error', message: 'Please provide a valid DOB, Income, and a location outside default country codes.' });
+      return;
+    }
+
     setSaving(true);
     setToast(null);
 
@@ -85,22 +99,24 @@ export default function ProfileRegistry() {
         dob: formData.dob,
         gender: formData.gender,
         role: formData.role,
-        income: formData.income ? Number(formData.income) : null,
+        income: formData.income ? Number(formData.income) : 0,
         location: formData.location,
+        verified_documents: formData.verified_documents || [],
         updated_at: new Date().toISOString(),
       };
 
       const { error } = await supabase
         .from('profiles')
-        .update(updates)
-        .eq('id', userSession.id);
+        .upsert({ id: userSession.id, ...updates });
 
       if (error) {
         console.error("Supabase update error details:", error);
         throw error;
       }
       
-      setToast({ type: 'success', message: 'Registry Profile updated successfully!' });
+      setIsProfileComplete(true);
+      setToast({ type: 'success', message: 'Registry Profile locked and saved successfully!' });
+      router.refresh(); 
     } catch (err) {
       console.error("[SYSTEM ALERT] Exception in profile update mutation:", err);
       setToast({ type: 'error', message: `Update exception: ${err.message || 'Check database schema compatibility.'}` });
@@ -112,17 +128,33 @@ export default function ProfileRegistry() {
 
   const hasDoc = (docName) => formData.verified_documents?.includes(docName);
 
-  const isRegistrySetupComplete = formData.income && Number(formData.income) > 0 && formData.location && formData.location !== 'India';
-
-  const handleSimulateUpload = (docName) => {
+  const handleSimulateUpload = async (docName) => {
     setUploadingDoc(docName);
-    setTimeout(() => {
+    try {
+      const supabase = createClient();
+      const updatedDocs = [...(formData.verified_documents || []), docName];
+      
+      const { error } = await supabase
+        .from('profiles')
+        .update({ verified_documents: updatedDocs })
+        .eq('id', userSession.id);
+
+      if (error) throw error;
+
       setFormData(prev => ({
         ...prev,
-        verified_documents: [...(prev.verified_documents || []), docName]
+        verified_documents: updatedDocs
       }));
+      
+      setToast({ type: 'success', message: `${docName} securely vaults-verified!` });
+      router.refresh();
+    } catch (err) {
+      console.error("Document vault save failure:", err);
+      setToast({ type: 'error', message: 'Failed to synchronize document verification state.' });
+    } finally {
       setUploadingDoc(null);
-    }, 2000);
+      setTimeout(() => setToast(null), 3000);
+    }
   };
 
   if (loading) {
@@ -143,6 +175,13 @@ export default function ProfileRegistry() {
           </p>
         </header>
 
+        {isProfileComplete && (
+          <div className="bg-red-50 text-red-700 font-semibold px-4 py-3 rounded-xl border border-red-200 text-sm mb-6 flex items-center gap-2 shadow-sm animate-fade-in">
+            <Lock className="w-5 h-5 shrink-0" />
+            <span>⚠️ Civic Lock Active: Your registry details have been securely synchronized with the central governance node. To maintain data integrity, these attributes cannot be modified online. Please visit a local facilitation desk for updates.</span>
+          </div>
+        )}
+
         {toast && (
           <div className={`mb-6 p-4 rounded-xl flex items-center gap-3 shadow-sm ${toast.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
              {toast.type === 'success' ? <ShieldCheck className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
@@ -158,100 +197,134 @@ export default function ProfileRegistry() {
                 <User className="w-6 h-6 text-[#3525CD]" /> Registry Details
               </h2>
               
-              <form onSubmit={handleUpdate} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Full Name (Disabled) */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-[#464555]">Full Name (Identity)</label>
-                    <input 
-                      type="text" 
-                      value={formData.full_name} 
-                      disabled 
-                      className="w-full px-4 py-3 rounded-xl border border-[#e0e3e5] bg-[#f2f4f6] text-[#5c647a] cursor-not-allowed font-medium focus:outline-none" 
-                    />
-                  </div>
-
-                  {/* DOB */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-[#464555] flex items-center gap-1.5"><Calendar className="w-4 h-4"/> Date of Birth</label>
-                    <input 
-                      type="date" 
-                      name="dob"
-                      value={formData.dob} 
-                      onChange={handleChange}
-                      className="w-full px-4 py-3 rounded-xl border border-[#e0e3e5] bg-white text-[#191c1e] focus:outline-none focus:border-[#3525CD] transition-colors" 
-                    />
-                  </div>
-
-                  {/* Gender */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-[#464555]">Gender</label>
-                    <select 
-                      name="gender"
-                      value={formData.gender} 
-                      onChange={handleChange}
-                      className="w-full px-4 py-3 rounded-xl border border-[#e0e3e5] bg-white text-[#191c1e] focus:outline-none focus:border-[#3525CD] transition-colors appearance-none"
-                    >
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-
-                  {/* Role */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-[#464555] flex items-center gap-1.5"><Briefcase className="w-4 h-4"/> Core Economic Role</label>
-                    <select 
-                      name="role"
-                      value={formData.role} 
-                      onChange={handleChange}
-                      className="w-full px-4 py-3 rounded-xl border border-[#e0e3e5] bg-white text-[#191c1e] focus:outline-none focus:border-[#3525CD] transition-colors appearance-none"
-                    >
-                      <option value="Student">Student</option>
-                      <option value="Farmer">Farmer</option>
-                      <option value="General Citizen">General Citizen</option>
-                      <option value="Entrepreneur">Entrepreneur</option>
-                    </select>
-                  </div>
-
-                  {/* Income */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-[#464555] flex items-center gap-1.5"><IndianRupee className="w-4 h-4"/> Annual Family Income (₹)</label>
-                    <input 
-                      type="number" 
-                      name="income"
-                      value={formData.income} 
-                      onChange={handleChange}
-                      placeholder="e.g. 500000"
-                      className="w-full px-4 py-3 rounded-xl border border-[#e0e3e5] bg-white text-[#191c1e] focus:outline-none focus:border-[#3525CD] transition-colors" 
-                    />
-                  </div>
-
-                  {/* Location */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-[#464555] flex items-center gap-1.5"><MapPin className="w-4 h-4"/> Primary Location</label>
-                    <input 
-                      type="text" 
-                      name="location"
-                      value={formData.location} 
-                      onChange={handleChange}
-                      placeholder="e.g. Lucknow, India"
-                      className="w-full px-4 py-3 rounded-xl border border-[#e0e3e5] bg-white text-[#191c1e] focus:outline-none focus:border-[#3525CD] transition-colors" 
-                    />
+              {!isProfileComplete && (
+                <div className="bg-amber-50 text-amber-700 font-semibold px-4 py-3 rounded-xl border border-amber-200 text-sm mb-6 flex items-center gap-2 animate-fade-in">
+                  <AlertTriangle className="w-5 h-5 shrink-0" />
+                  ⚠️ Civic Lock Warning: Your registry details will be securely synchronized with the central governance node upon update. To maintain data integrity, these attributes cannot be modified online afterward. Please ensure all details are correct.
+                </div>
+              )}
+              
+              {isProfileComplete ? (
+                <div className="animate-fade-in">
+                  <div className="space-y-4 bg-[#fcfdfe] rounded-2xl border border-[#e0e3e5] p-6">
+                    <div className="grid grid-cols-2 gap-y-6 gap-x-4">
+                      <div>
+                        <span className="block text-xs font-bold text-[#464555] uppercase tracking-wider mb-1">Full Name (Identity)</span>
+                        <span className="text-sm font-semibold text-[#191c1e]">{formData.full_name || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="block text-xs font-bold text-[#464555] uppercase tracking-wider mb-1">Date of Birth</span>
+                        <span className="text-sm font-semibold text-[#191c1e]">{formData.dob || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="block text-xs font-bold text-[#464555] uppercase tracking-wider mb-1">Gender</span>
+                        <span className="text-sm font-semibold text-[#191c1e]">{formData.gender || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="block text-xs font-bold text-[#464555] uppercase tracking-wider mb-1">Core Economic Role</span>
+                        <span className="text-sm font-semibold text-[#191c1e]">{formData.role || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="block text-xs font-bold text-[#464555] uppercase tracking-wider mb-1">Annual Family Income</span>
+                        <span className="text-sm font-semibold text-[#191c1e]">₹{formData.income || '0'}</span>
+                      </div>
+                      <div>
+                        <span className="block text-xs font-bold text-[#464555] uppercase tracking-wider mb-1">Primary Location</span>
+                        <span className="text-sm font-semibold text-[#191c1e]">{formData.location || 'N/A'}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
+              ) : (
+                <form onSubmit={handleUpdate} className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-[#464555]">Full Name (Identity)</label>
+                      <input 
+                        type="text" 
+                        value={formData.full_name} 
+                        disabled 
+                        className="w-full px-4 py-3 rounded-xl border border-[#e0e3e5] bg-[#f2f4f6] text-[#5c647a] cursor-not-allowed font-medium focus:outline-none" 
+                      />
+                    </div>
 
-                <div className="pt-4 border-t border-[#e0e3e5] flex justify-end">
-                  <button 
-                    type="submit" 
-                    disabled={saving}
-                    className="flex items-center gap-2 bg-[#3525CD] hover:bg-[#2d1fae] text-white px-8 py-3.5 rounded-xl font-bold transition-all shadow-md shadow-[#3525CD]/20 hover:-translate-y-0.5 disabled:opacity-70 disabled:pointer-events-none"
-                  >
-                    {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                    Update Registry Profile
-                  </button>
-                </div>
-              </form>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-[#464555] flex items-center gap-1.5"><Calendar className="w-4 h-4"/> Date of Birth</label>
+                      <input 
+                        type="date" 
+                        name="dob"
+                        value={formData.dob} 
+                        onChange={handleChange}
+                        className="w-full px-4 py-3 rounded-xl border border-[#e0e3e5] bg-white text-[#191c1e] focus:outline-none focus:border-[#3525CD] transition-colors" 
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-[#464555]">Gender</label>
+                      <select 
+                        name="gender"
+                        value={formData.gender} 
+                        onChange={handleChange}
+                        className="w-full px-4 py-3 rounded-xl border border-[#e0e3e5] bg-white text-[#191c1e] focus:outline-none focus:border-[#3525CD] transition-colors appearance-none"
+                      >
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-[#464555] flex items-center gap-1.5"><Briefcase className="w-4 h-4"/> Core Economic Role</label>
+                      <select 
+                        name="role"
+                        value={formData.role} 
+                        onChange={handleChange}
+                        className="w-full px-4 py-3 rounded-xl border border-[#e0e3e5] bg-white text-[#191c1e] focus:outline-none focus:border-[#3525CD] transition-colors appearance-none"
+                      >
+                        <option value="Student">Student</option>
+                        <option value="Farmer">Farmer</option>
+                        <option value="General Citizen">General Citizen</option>
+                        <option value="Entrepreneur">Entrepreneur</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-[#464555] flex items-center gap-1.5"><IndianRupee className="w-4 h-4"/> Annual Family Income (₹)</label>
+                      <input 
+                        type="number" 
+                        name="income"
+                        value={formData.income} 
+                        onChange={handleChange}
+                        placeholder="e.g. 500000"
+                        className="w-full px-4 py-3 rounded-xl border border-[#e0e3e5] bg-white text-[#191c1e] focus:outline-none focus:border-[#3525CD] transition-colors" 
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-[#464555] flex items-center gap-1.5"><MapPin className="w-4 h-4"/> Primary Location</label>
+                      <input 
+                        type="text" 
+                        name="location"
+                        value={formData.location} 
+                        onChange={handleChange}
+                        placeholder="e.g. Lucknow, India"
+                        className="w-full px-4 py-3 rounded-xl border border-[#e0e3e5] bg-white text-[#191c1e] focus:outline-none focus:border-[#3525CD] transition-colors" 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-[#e0e3e5] flex justify-end">
+                    <button 
+                      type="submit" 
+                      disabled={saving}
+                      className="flex items-center gap-2 bg-[#3525CD] hover:bg-[#2d1fae] text-white px-8 py-3.5 rounded-xl font-bold transition-all shadow-md shadow-[#3525CD]/20 hover:-translate-y-0.5 disabled:opacity-70 disabled:pointer-events-none"
+                    >
+                      {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                      Update Registry Profile
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
 
@@ -262,7 +335,7 @@ export default function ProfileRegistry() {
                 <FileText className="w-5 h-5 text-[#3525CD]" /> Safe Document Vault
               </h3>
               
-              {!isRegistrySetupComplete ? (
+              {!isProfileComplete ? (
                 <div className="p-8 border-2 border-dashed border-[#e0e3e5] rounded-2xl flex flex-col items-center justify-center text-center bg-[#f7f9fb] animate-fade-in">
                   <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-4 text-gray-400">
                     <Lock className="w-6 h-6" />
